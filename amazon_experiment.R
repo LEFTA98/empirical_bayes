@@ -2,7 +2,7 @@
 
 # Step 0: Loading the data
 
-raw_df = read.csv("Gift_Cards.csv", header = FALSE, col.names=c("item", "user", "rating", "timestamp"))
+raw_df = read.csv("data/Gift_Cards.csv", header = FALSE, col.names=c("item", "user", "rating", "timestamp"))
 head(raw_df)
 
 # Step 1: Data exploration
@@ -67,6 +67,8 @@ step <- function(alphas, log_p, N, step_size, forward=TRUE) {
   }
   return(alphas)
 }
+
+library(distr)
 
 fp_step <- function(alphas, log_p, N) {
   return(igamma(rep(digamma(sum(alphas)), 5) + log_p/N))
