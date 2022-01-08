@@ -1,0 +1,26 @@
+---
+title: "Testing the performance of our simple Amazon EB model"
+author: "Thomas Ma"
+date: "1/8/2022"
+output: html_document
+---
+At the end of our prior-fitting process, we found the the weights for the 5 parameters of our Dirichlet prior were given by $\hat{\alpha} = (18.41, 4.78, 7.57, 21.55, 309.98)$. We now want to see how well our Bayesian model performs in assessing the rating distribution of products.
+
+## Reasoning behind evaluation procedure
+
+Let's say that we have some initial data for a product $p$ with a 10 1-star ratings, 2 2-star ratings, 3 3-star ratings, 20 4-star ratings, and 80 5-star ratings. Given this data and the fitted Dirichlet prior from above, we seek some measure of the rating distribution of the product, in order to assess how "good" this product is. 
+
+Let $r_p = (10, 2, 3, 20, 80)$. Feeding this into our fitted Dirichlet prior, we obtain a posterior Dirichlet distribution with parameters (28, 6.78, 10.57, 41.55, 389.98). Of course, this posterior distribution does not give us exactly what we want; in essence, the posterior distribution gives us a distribution over possible categorical distributions that the product could have. 
+
+Recall that the output of a Dirichlet distribution with parameters $\alpha_1, \alpha_2, \alpha_3, \alpha_4, \alpha_5$ is some 5-tuple $(X_1,X_2,X_3,X_4,X_5)$ where $\sum_ix_i = 1$. In our problem, this 5-tuple represents the weights for some categorical distribution with 5 categories. Using this information, I elected to estimate the proportion of $i$-star ratings that a product $p$ with Dirichlet posterior $D_p$ would have as $E_{X \sim D_p}[X_i]$. This, at the time, seemed to me like the best way to account for the spread of outcomes suggested by the posterior distribution.
+
+For example, using the numbers from our imaginary product above, we would estimate the expected proportion of 1-star ratings the product gets as $\frac{28}{28+6.78+10.57+41.55+398.89} \approx 0.576$.
+
+## Experiment design and outcomes
+
+For each product held out to test time, the following procedure was executed:
+
+1. Ratings for the product were sorted by timestamp and split 70/30 into two groups: One to fit the posterior, and one for testing.
+2. After a posterior with parameters $(\beta_1...\beta_5)$ for the product was constructed, $E[X_i]$ was calculated as $\frac{\beta_i}{\sum_i \beta_i}$.
+3. To test our performance, the squared difference between $E[X_i]$ and the proportion of $i$-star ratings in the test set was added to our loss $\mathcal{L}$.
+4. I computed the MSE as $\mathcal{L}/(5 \cdot k)$, where $k$ is the total number of products in our test set.
