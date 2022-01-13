@@ -2,7 +2,9 @@
 title: "Testing the performance of our simple Amazon EB model"
 author: "Thomas Ma"
 date: "1/8/2022"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 At the end of our prior-fitting process, we found the the weights for the 5 parameters of our Dirichlet prior were given by $\hat{\alpha} = (18.41, 4.78, 7.57, 21.55, 309.98)$. We now want to see how well our Bayesian model performs in assessing the rating distribution of products.
 
@@ -24,3 +26,92 @@ For each product held out to test time, the following procedure was executed:
 2. After a posterior with parameters $(\beta_1...\beta_5)$ for the product was constructed, $E[X_i]$ was calculated as $\frac{\beta_i}{\sum_i \beta_i}$.
 3. To test our performance, the squared difference between $E[X_i]$ and the proportion of $i$-star ratings in the test set was added to our loss $\mathcal{L}$.
 4. I computed the MSE as $\mathcal{L}/(5 \cdot k)$, where $k$ is the total number of products in our test set.
+
+As a benchmark, I also created a "frequentist" baseline model for the 70/30 split that simply tried to predict the distribution of the 30% by copying the distribution of the 70%. This method is equivalent to MLE for a categorical distribution after seeing the 70% training data.
+
+## Actual testing code
+
+```{r}
+library(data.table)
+library(tidyverse)
+# Load the data
+
+raw_df = read.csv("../data/Gift_Cards.csv", header = FALSE, col.names=c("item", "user", "rating", "timestamp"))
+head(raw_df)
+
+df <- raw_df %>% 
+  select(c("item", "rating"))
+
+set.seed(1729)
+# train-test split
+
+counts <- count(df, item) %>%
+  filter(n > 20)
+
+df = merge(counts, df, by="item")
+in.train = sample(unique(df$item), size = 0.6*length(unique(df$item)))
+df.train = filter(df, item %in% in.train)
+df.rest = filter(df, !item %in% in.train)
+in.val = sample(unique(df.rest$item), size=0.5*length(unique(df.rest$item)))
+df.val = filter(df.rest, item %in% in.val)
+df.test = filter(df.rest, !item %in% in.val)
+
+# alphas taken from train set (see amazon_experiment.R for how to generate this)
+alphas = c(18.41, 4.78, 7.57, 21.55, 309.98)
+
+# testing step 1: order results by timestamp
+
+df.test <- filter(raw_df, item %in% df.test$item) %>%
+  group_by(item) %>% 
+  arrange(timestamp, .by_group = TRUE)
+
+# get 70th percentile value for each product
+quant_df <- group_by(df.test, item) %>%
+  summarize(q70 = quantile(timestamp, .7))
+
+df.test <- inner_join(df.test, quant_df, by="item")
+
+#split test set by percentile
+df.test_learn = filter(df.test, timestamp <= q70)
+df.test_eval = filter(df.test, timestamp > q70)
+
+df.test_learn <- dcast(setDT(df.test_learn), item ~ rating, fun.aggregate = length) %>% arrange(item)
+df.test_eval <- dcast(setDT(df.test_eval), item ~ rating, fun.aggregate = length) %>% arrange(item)
+
+colnames(df.test_learn) <- c("item", "n1", "n2", "n3", "n4", "n5")
+colnames(df.test_eval) <- c("item", "n1", "n2", "n3", "n4", "n5")
+
+df.test_learn$n = df.test_learn$"n1" + df.test_learn$"n2" + df.test_learn$"n3" + df.test_learn$"n4" + df.test_learn$"n5"
+df.test_eval$n = df.test_eval$"n1" + df.test_eval$"n2" + df.test_eval$"n3" + df.test_eval$"n4" + df.test_eval$"n5"
+
+df.test_learn <- mutate(df.test_learn, b1 = n1 + alphas[1], b2 = n2 + alphas[2], b3 = n3 + alphas[3], 
+                        b4 = n4 + alphas[4], b5 = n5 + alphas[5], b = n + sum(alphas))
+
+#frequentist estimate
+df.test_learn_frequentist <- transmute(df.test_learn, n1 = n1 / n, n2 = n2 / n, n3 = n3 / n, n4 = n4 / n, n5 = n5 / n)
+#bayesian estimate
+df.test_learn_eb <- transmute(df.test_learn, b1 = b1/b, b2 = b2/b, b3 = b3/b, b4 = b4/b, b5 = b5/b)
+
+# actual distributions of 30% held-out data
+df.test_eval <- transmute(df.test_eval, n1 = n1 / n, n2 = n2 / n, n3 = n3 / n, n4 = n4 / n, n5 = n5 / n)
+
+# better metric to look at? This basically says for prediction of future values, freq and eb are same
+mse_freq = sum((df.test_learn_frequentist - df.test_eval)^2) / (nrow(df.test_eval)*ncol(df.test_eval))
+mse_eb = sum((df.test_learn_eb - df.test_eval)^2) / (nrow(df.test_eval)*ncol(df.test_eval))
+
+# let's plot a scatter plot of number of datapoints and mse
+
+df.test_learn$mse_f = rowSums((df.test_learn_frequentist - df.test_eval)^2)/5
+df.test_learn$mse_b = rowSums((df.test_learn_eb - df.test_eval)^2)/5
+
+a <- ggplot(df.test_learn, aes(x=n, y=mse_f)) + geom_point()
+b <- ggplot(df.test_learn, aes(x=n,y = mse_b)) + geom_point()
+
+library(gridExtra)
+
+grid.arrange(a, b, ncol=2)
+```
+## Next steps
+
+- How do we deal with the "missing reviews" problems in this model? i.e. if, when training the prior, one product doesn't have some any reviews of one rating, what should we do?
+- Is this preliminary approach of calculating MSE really the best way to evaluate the performance of this model? Ultimately, we want something that approximates an overall "goodness" of a product, and we're currently trying to express that goodness as 5 weights over each rating category.
