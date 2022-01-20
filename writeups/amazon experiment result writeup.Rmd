@@ -110,6 +110,20 @@ b <- ggplot(df.test_learn, aes(x=n,y = mse_b)) + geom_point()
 library(gridExtra)
 
 grid.arrange(a, b, ncol=2)
+
+# second metric - KL-divergence
+
+df.test_learn$kldiv_test = rowSums(df.test_eval*log(df.test_eval/df.test_learn_eb), na.rm = TRUE)
+df.test_learn$kldiv_baseline = rowSums(df.test_eval*log(df.test_eval/df.test_learn_frequentist), na.rm = TRUE)
+df.test_learn$kldiv_prior = rowSums(df.test_learn_eb*log(df.test_learn_eb/((alphas)/sum(alphas))), na.rm=TRUE)
+
+plot_0 <- ggplot(df.test_learn, aes(x=n, y=kldiv_test)) + geom_point()
+plot_1 <- ggplot(df.test_learn, aes(x=n, y=kldiv_baseline)) + geom_point()
+plot_2 <- ggplot(df.test_learn, aes(x=n, y=kldiv_prior)) + geom_point()
+
+grid.arrange(plot_0, plot_1, ncol=2)
+
+plot_2
 ```
 ## Next steps
 
