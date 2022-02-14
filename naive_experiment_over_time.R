@@ -75,9 +75,9 @@ for (i in c(1:50)) {
   f_mse = rowSums((df.test_learn_f - df.test_eval)^2)
   b_mse = rowSums((df.test_learn_b - df.test_eval)^2)
   f_kl = rowSums(df.test_eval*log(df.test_eval/df.test_learn_f), na.rm = TRUE)
-  f_kl[!is.finite(f_kl)] = 0
+  f_kl[!is.finite(f_kl)] = 1
   b_kl = rowSums(df.test_eval*log(df.test_eval/df.test_learn_b), na.rm = TRUE)
-  b_kl[!is.finite(b_kl)] = 0
+  b_kl[!is.finite(b_kl)] = 1
   
   mses_f[[i]] = f_mse
   mses_b[[i]] = b_mse
@@ -91,6 +91,12 @@ mses_b = data.frame(val = colSums(mses_b) / 89)
 kls_f = data.frame(val = colSums(kls_f) / 89)
 kls_b = data.frame(val = colSums(kls_b) / 89)
 
+mses_data = tibble(mses_f, mses_b, .name_repair = "unique")
+colnames(mses_data) <- c("f", "b")
+
+kls_data = tibble(kls_f, kls_b, .name_repair = "unique")
+colnames(kls_data) <- c("f", "b")
+
 #plotting time - these plots aren't great so work on em
 library(gridExtra)
 plot_mse_f = ggplot(mses_f, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("mse_f")
@@ -100,3 +106,13 @@ plot_kl_b = ggplot(kls_b, aes(x = seq_along(val), y=val)) + geom_point() + ggtit
 
 grid.arrange(plot_mse_f, plot_mse_b, ncol=2)
 grid.arrange(plot_kl_f, plot_kl_b, ncol=2)
+
+ggplot(mses_data) + 
+  geom_point(aes(x=seq_along(b),y=f)) + 
+  geom_point(aes(x=seq_along(b), y=b)) +
+  ggtitle("mse loss")
+
+ggplot(kls_data) + 
+  geom_point(aes(x=seq_along(f),y=f)) + 
+  geom_point(aes(x=seq_along(f), y=b)) +
+  ggtitle("kl divergence from test")
