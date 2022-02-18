@@ -1,6 +1,10 @@
 library(data.table)
 library(tidyverse)
 
+# alphas from naive experiment
+alphas = c(18.41, 4.78, 7.57, 21.55, 309.98)
+b = sum(alphas)
+
 # load in the data
 raw_df = read.csv("data/Gift_Cards.csv", header = FALSE, col.names=c("item", "user", "rating", "timestamp"))
 head(raw_df)
@@ -16,10 +20,6 @@ df = merge(counts, df, by="item")
 in.train = sample(unique(df$item), size = 0.6*length(unique(df$item)))
 df.train = filter(df, item %in% in.train)
 df.test = filter(df, !item %in% in.train)
-
-# alphas from naive experiment
-alphas = c(18.41, 4.78, 7.57, 21.55, 309.98)
-b = sum(alphas)
 
 temp = filter(raw_df, item %in% df.test$item)
 df.test <- merge(counts, temp, by="item")
@@ -43,8 +43,6 @@ colnames(df.test_eval) <- c("item", "n1", "n2", "n3", "n4", "n5")
 df.test_eval$n = df.test_eval$"n1" + df.test_eval$"n2" + df.test_eval$"n3" + df.test_eval$"n4" + df.test_eval$"n5"
 df.test_eval <- transmute(df.test_eval, n1 = n1 / n, n2 = n2 / n, n3 = n3 / n, n4 = n4 / n, n5 = n5 / n)
 
-num_eval_products = nrow(df.test_eval)
-
 # start training and checking performance at each step
 items = unique(df.test_learn$item)
 
@@ -62,7 +60,7 @@ for (i in c(1:50)) {
   
   # adding missing columns
   for (j in setdiff(c("item", "1", "2", "3", "4", "5"), colnames(df.test_learn_subset))) {
-    df.test_learn_subset[[j]] <- rep(0, num_eval_products)
+    df.test_learn_subset[[j]] <- rep(0, 89)
   }
   df.test_learn_subset <- df.test_learn_subset[,c("item", "1", "2", "3", "4", "5")]
   
@@ -88,54 +86,33 @@ for (i in c(1:50)) {
 
 }
 
-mses_f = tibble(val = colSums(mses_f) / num_eval_products, method = "freq", idx=c(1:length(mses_f)))
-mses_b = tibble(val = colSums(mses_b) / num_eval_products, method = "eb", idx=c(1:length(mses_b)))
-kls_f = tibble(val = colSums(kls_f) / num_eval_products, method = "freq", idx=c(1:length(kls_f)))
-kls_b = tibble(val = colSums(kls_b) / num_eval_products, method = "eb", idx=c(1:length(kls_b)))
+mses_f = data.frame(val = colSums(mses_f) / 89)
+mses_b = data.frame(val = colSums(mses_b) / 89)
+kls_f = data.frame(val = colSums(kls_f) / 89)
+kls_b = data.frame(val = colSums(kls_b) / 89)
 
-mses = rbind(mses_f,mses_b)
-kls = rbind(kls_f,kls_b)
+mses_data = tibble(mses_f, mses_b, .name_repair = "unique")
+colnames(mses_data) <- c("f", "b")
 
-ggplot(mses, aes(x=idx, y=val, color=method)) +
-  geom_point() +
+kls_data = tibble(kls_f, kls_b, .name_repair = "unique")
+colnames(kls_data) <- c("f", "b")
+
+#plotting time - these plots aren't great so work on em
+library(gridExtra)
+plot_mse_f = ggplot(mses_f, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("mse_f")
+plot_mse_b = ggplot(mses_b, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("mse_b")
+plot_kl_f = ggplot(kls_f, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("kl_f")
+plot_kl_b = ggplot(kls_b, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("kl_b")
+
+grid.arrange(plot_mse_f, plot_mse_b, ncol=2)
+grid.arrange(plot_kl_f, plot_kl_b, ncol=2)
+
+ggplot(mses_data) + 
+  geom_point(aes(x=seq_along(b),y=f)) + 
+  geom_point(aes(x=seq_along(b), y=b)) +
   ggtitle("mse loss")
 
-ggplot(kls, aes(x=idx, y=val, color=method)) +
-  geom_point() +
+ggplot(kls_data) + 
+  geom_point(aes(x=seq_along(f),y=f)) + 
+  geom_point(aes(x=seq_along(f), y=b)) +
   ggtitle("kl divergence from test")
-
-### PREVIOUS PLOTTING APPROACH
-
-# mses_data = tibble(mses_f, mses_b, .name_repair = "unique")
-# colnames(mses_data) <- c("f", "b")
-# 
-# kls_data = tibble(kls_f, kls_b, .name_repair = "unique")
-# colnames(kls_data) <- c("f", "b")
-# 
-# kls_total = rbind(tibble(kls_f, "frequentist approach"), tibble(kls_b, "bayesian approach"))
-# mses_total = rbind(tibble(mses_f, "frequentist approach"), tibble(kls_b, "bayesian approach"))
-# 
-# #plotting time - these plots aren't great so work on em
-# library(gridExtra)
-# plot_mse_f = ggplot(mses_f, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("mse_f")
-# plot_mse_b = ggplot(mses_b, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("mse_b")
-# plot_kl_f = ggplot(kls_f, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("kl_f")
-# plot_kl_b = ggplot(kls_b, aes(x = seq_along(val), y=val)) + geom_point() + ggtitle("kl_b")
-# 
-# grid.arrange(plot_mse_f, plot_mse_b, ncol=2)
-# grid.arrange(plot_kl_f, plot_kl_b, ncol=2)
-# 
-# ggplot(mses_data) + 
-#   geom_point(aes(x=seq_along(b),y=f)) + 
-#   geom_point(aes(x=seq_along(b), y=b)) +
-#   ggtitle("mse loss")
-# 
-# ggplot(kls_data) + 
-#   geom_point(aes(x=seq_along(f),y=f)) + 
-#   geom_point(aes(x=seq_along(f), y=b)) +
-#   ggtitle("kl divergence from test")
-
-
-# todo for more sophisticated temporal experiments 
-# 0. fix the plots
-# 1. download more stuff
